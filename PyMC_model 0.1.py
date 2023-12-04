@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Nov 29 15:20:21 2023
-
-@author: yavry
-"""
-
 import pymc as pm
 import numpy as np
 
