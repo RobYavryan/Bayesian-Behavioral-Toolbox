@@ -37,7 +37,6 @@ with pm.Model() as model:
     q = pm.Gamma('q', alpha=1.0E-3, beta=1.0E-3, shape=NSubjects) # Same idea with mean around 1 or 2 and std around 1 or 2
     r = pm.Gamma('r', alpha=1.0E-3, beta=1.0E-3, shape=NSubjects) # Same idea mean around 10 and std aroung 5 or more
 
-    x = pm.Normal('x', mu=0.0, sigma=1.0E3, shape=(TrialEnd+1, NSubjects))
 
     for s in range(NSubjects):
         for t in range(TrialStart, TrialEnd):
