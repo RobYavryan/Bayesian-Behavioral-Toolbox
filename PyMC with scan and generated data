@@ -1,0 +1,66 @@
+import pymc as pm
+import numpy as np
+import pytensor
+
+NSubjects = 10  # replace with actual number of subjects
+TrialStart = 1  
+TrialEnd = 900  
+
+#Generating Random data
+############################################################################################
+
+q = 2
+r = 10
+A = 0.9
+B = 0.2
+v = np.random.randint(1, TrialEnd - TrialStart, size=TrialEnd)
+p = np.concatenate([np.zeros(180), 45 * np.ones(600), np.zeros(180)])
+
+x = np.zeros(TrialEnd)
+y = np.zeros(TrialEnd)
+u = np.zeros(TrialEnd)
+
+for i in range(TrialStart-1, TrialEnd):
+    x[i] = np.random.normal(A * x[i - 1] + v[i - 1] * B * u[i - 1], q)
+    y[i] = np.random.normal(x[i], r)
+    u[i] = y[i] + p[i]
+
+#State-space model updating loop
+def loop_fn(t, x, A, B, v, u):
+    x_next = A * x - v * B * u
+    return x_next
+
+################################################################################################
+with pm.Model() as model:
+    A1mu = pm.Normal('A1mu', mu=2, sigma=1)
+    A1prec = pm.Gamma('A1prec', mu=2, sigma=1)
+    B1mu = pm.Normal('B1mu', mu=-1, sigma=0.75)
+    B1prec = pm.Gamma('B1prec', mu=-0.75, sigma=0.75)
+
+    A1 = pm.Normal('A1', mu=A1mu, sigma=(1/A1prec), shape=NSubjects)
+    B1 = pm.Normal('B1', mu=B1mu, sigma=(1/B1prec), shape=NSubjects)
+    A = pm.Deterministic('A', pm.math.invlogit(A1))
+    B = pm.Deterministic('B', pm.math.invlogit(B1))
+
+    q = pm.Gamma('q', alpha=1.0E-3, beta=1.0E-3, shape=NSubjects) # Same idea with mean around 1 or 2 and std around 1 or 2
+    r = pm.Gamma('r', alpha=1.0E-3, beta=1.0E-3, shape=NSubjects) # Same idea mean around 10 and std aroung 5 or more
+
+    # Initial state of x
+    x_init = pm.Normal('x_init', mu=0.0, tau=1.0E3, shape=(NSubjects))
+
+    # Pytensor scan function to replace the for-loop
+    results, updates = pytensor.scan(fn=loop_fn,
+                                   sequences=[pytensor.tensor.arange(TrialStart, TrialEnd)],
+                                   outputs_info=[x[0]],
+                                   non_sequences= [A, B, v, u])
+
+    x = pytensor.tensor.concatenate([x_init[None,:], results])
+    #x= pm.Normal('x', mu=results, tau=q, shape=(TrialEnd, NSubjects))
+
+    # Likelihood (sampling distribution) of observations
+    y = pm.Normal('y', mu=x, tau=r, shape=(TrialEnd, NSubjects))
+
+    # draw posterior samples
+    trace = pm.sample(2000, tune=1000)
+
+pm.plot_posterior(trace) 
