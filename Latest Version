@@ -1,0 +1,66 @@
+import scipy.io as spio
+import pymc as pm
+import numpy as np
+import pytensor as pt
+
+NSubjects = 60
+TrialStart = 1  
+TrialEnd = 900  
+
+sixtydata = spio.loadmat('dataForBayesianAnalysisEEG-VM')
+
+y= sixtydata['aimingError'][:TrialEnd,:NSubjects]
+v= sixtydata['showCursor'] [:TrialEnd,:NSubjects]
+p= sixtydata['rotation'] [:TrialEnd,:NSubjects]
+
+v= pt.shared(v)
+p= pt.shared(p)
+y= pt.shared(y)
+
+def loop_fn(v, epsilon, eta, p, x_init, A, B):
+    angle = x_init + epsilon
+    x_next = A * x_init - v * B * (angle+p) + eta
+    return x_next
+
+################################################################################################
+coords = {
+    "trials": np.arange(TrialStart, TrialEnd+1,step=1),
+    "subjects": np.arange(1,NSubjects+1, step=1),
+}
+with pm.Model(coords=coords) as model:
+    A1mu = pm.Normal('A1mu', mu=0, sigma=1)
+    A1std = pm.Gamma('A1std', mu=2, sigma=1)
+    B1mu = pm.Normal('B1mu', mu=0, sigma=0.75)
+    B1std = pm.Gamma('B1std', mu=2, sigma=1)
+
+    A1 = pm.Normal('A1', mu=A1mu, sigma=A1std, dims="subjects", initval= np.full(NSubjects, 0.9))
+    B1 = pm.Normal('B1', mu=B1mu, sigma=B1std, dims="subjects", initval= np.full(NSubjects, 0.1))
+    A = pm.Deterministic('A', pm.math.invlogit(A1))
+    B = pm.Deterministic('B', pm.math.invlogit(B1))
+
+    q = pm.Gamma('q', mu=1, sigma=1, dims="subjects", initval= np.full(NSubjects, 1)) 
+    r = pm.Gamma('r', mu=1, sigma=1, dims="subjects", initval= np.full(NSubjects, 4))
+
+    epsilon =  pm.Normal('epsilon', mu=0, sigma=q, dims=["trials", "subjects"])
+    eta = pm.Normal('eta', mu=0, sigma=r, dims=["trials", "subjects"])
+
+
+    # Initial state of x
+    x_init = pm.Normal('x_init', mu=0.0, sigma=1, dims=["subjects"])
+
+    # Pytensor scan function to replace the for-loop
+    x, updates = pt.scan(fn=loop_fn,
+                                   sequences=[v, epsilon, eta, p],
+                                   outputs_info= x_init,
+                                   non_sequences= [A, B],
+                                   n_steps= TrialEnd,
+                                   strict= True,
+                                   allow_gc= False)
+
+    # Likelihood (sampling distribution) of observations
+    likelihood = pm.Normal('y', x+epsilon, observed= y)
+
+    # draw posterior samples
+    trace = pm.sample(chains= 100, tune=1000, cores=6)
+    
+pm.plot_posterior(trace) 
