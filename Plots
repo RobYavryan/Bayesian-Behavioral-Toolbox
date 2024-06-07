@@ -1,57 +1,94 @@
+# plot_and_test.py
+
 from os.path import dirname, realpath, join as pjoin
 import arviz as az
 import matplotlib.pyplot as plt
+import numpy as np
+import unittest
 
+# Define directory and load data
 dir_path = dirname(realpath(__file__))
-posterior_fname = pjoin(dir_path, 'posteriorDatav2.nc')
+posterior_fname = pjoin(dir_path, 'posteriorDataX.nc')
 idata = az.from_netcdf(posterior_fname)
 
+# Set ArviZ style
 az.style.use("arviz-doc")
 
-az.plot_trace(idata, var_names=("A1mu", "A1std"))
-plt.show()
+def generate_plots():
+    # Plot trace for specific parameters
+    az.plot_trace(idata, var_names=("A1mu", "A1std"))
+    plt.savefig(pjoin(dir_path, 'trace_A1mu_A1std.jpg'))
+    plt.close()
 
-az.plot_trace(idata, var_names=("B1mu", "B1std"))
-plt.show()
+    az.plot_trace(idata, var_names=("B1mu", "B1std"))
+    plt.savefig(pjoin(dir_path, 'trace_B1mu_B1std.jpg'))
+    plt.close()
 
-az.plot_trace(idata, var_names=("etamu", "etastd"))
-plt.show()
+    # Custom function to add vertical mean line
+    def add_mean_line(ax, mean_value, label):
+        ax.axvline(mean_value, color='r', linestyle='--', label=label)
+        ax.legend()
 
-az.plot_trace(idata, var_names=("epsilonmu", "epsilonstd"))
-plt.show()
+    # Plot forest for parameters with customizations
+    forest_vars = ["A", "B", "sigma_eta", "sigma_epsilon"]
+    for var in forest_vars:
+        fig, ax = plt.subplots(figsize=(15, 15))  # Increased height for better visibility
+        az.plot_forest(
+            idata,
+            var_names=[var],
+            combined=True,  # Combine chains into a single line per subject
+            ax=ax
+        )
+        mean_value = np.mean(idata.posterior[var].values)
+        add_mean_line(ax, mean_value, '')
+        ax.set_title(f"Forest plot for {var}", fontsize= 18)
+        ax.set_ylabel("Subjects")
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.savefig(pjoin(dir_path, f'forest_{var}.jpg'))
+        plt.close(fig)
 
-ax = az.plot_forest(
-    idata,
-    var_names=["A1"],
-    combined=False,
-    figsize=(11.5, 5),
-    colors="C1",
-)
-plt.show()
+class TestPlotGeneration(unittest.TestCase):
 
-ax = az.plot_forest(
-    idata,
-    var_names=["B1"],
-    combined=False,
-    figsize=(11.5, 5),
-    colors="C1",
-)
-plt.show()
+    def test_trace_plot_A(self):
+        fig, ax = plt.subplots()
+        az.plot_trace(idata, var_names=("A1mu", "A1std"), ax=ax)
+        self.assertEqual(len(ax.figure.axes), 4)  # Trace plot should have 4 axes
+        plt.close(fig)
 
-ax = az.plot_forest(
-    idata,
-    var_names=["sigma_eta"],
-    combined=False,
-    figsize=(11.5, 5),
-    colors="C1",
-)
-plt.show()
+    def test_trace_plot_B(self):
+        fig, ax = plt.subplots()
+        az.plot_trace(idata, var_names=("B1mu", "B1std"), ax=ax)
+        self.assertEqual(len(ax.figure.axes), 4)  # Trace plot should have 4 axes
+        plt.close(fig)
 
-ax = az.plot_forest(
-    idata,
-    var_names=["sigma_epsilon"],
-    combined=False,
-    figsize=(11.5, 5),
-    colors="C1",
-)
-plt.show()
+    def test_forest_plot_A(self):
+        fig, ax = plt.subplots(figsize=(15, 15))  # Match the figure size used in plot generation
+        az.plot_forest(idata, var_names=["A"], combined=True, credible_interval=0.95, ax=ax)
+        mean_value = np.mean(idata.posterior["A"].values)
+        self.assertEqual(len(ax.get_lines()), 60)  # Should reflect the number of subjects
+        plt.close(fig)
+
+    def test_forest_plot_B(self):
+        fig, ax = plt.subplots(figsize=(15, 15))  # Match the figure size used in plot generation
+        az.plot_forest(idata, var_names=["B"], combined=True, credible_interval=0.95, ax=ax)
+        mean_value = np.mean(idata.posterior["B"].values)
+        self.assertEqual(len(ax.get_lines()), 60)  # Should reflect the number of subjects
+        plt.close(fig)
+
+    def test_forest_plot_sigma_eta(self):
+        fig, ax = plt.subplots(figsize=(15, 15))  # Match the figure size used in plot generation
+        az.plot_forest(idata, var_names=["sigma_eta"], combined=True, credible_interval=0.95, ax=ax)
+        mean_value = np.mean(idata.posterior["sigma_eta"].values)
+        self.assertEqual(len(ax.get_lines()), 60)  # Should reflect the number of subjects
+        plt.close(fig)
+
+    def test_forest_plot_sigma_epsilon(self):
+        fig, ax = plt.subplots(figsize=(15, 15))  # Match the figure size used in plot generation
+        az.plot_forest(idata, var_names=["sigma_epsilon"], combined=True, credible_interval=0.95, ax=ax)
+        mean_value = np.mean(idata.posterior["sigma_epsilon"].values)
+        self.assertEqual(len(ax.get_lines()), 60)  # Should reflect the number of subjects
+        plt.close(fig)
+
+if __name__ == "__main__":
+    generate_plots()
+    unittest.main()
